@@ -45,6 +45,7 @@ public class Main {
         AccCover savedAcc = new AccCover((Stateable) account1);
         checkState(savedAcc);
         System.out.println(savedAcc);
+
         client1.setSurname("Ivanov");
         System.out.println(account1);
 

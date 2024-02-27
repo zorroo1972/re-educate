@@ -6,7 +6,6 @@
          this.cur = cur;
          this.ammount = ammount;
      }
-
      @Override
      public String toString() {
          return ammount + cur.isoCode;

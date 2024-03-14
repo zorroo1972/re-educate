@@ -1,48 +1,61 @@
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class CachingHandler<T> implements InvocationHandler {
-    private T currentObject;
-    private Map<Method, Object> results = new HashMap<>();
+public class CachingHandler implements InvocationHandler {
+    private final Object currentObject;
+    Thread clearCacheThread;
+    private Map<CacheKey, CacheEntry> cache = new ConcurrentHashMap<>();
 
-    public CachingHandler(T currentObject) {
+    public CachingHandler(Object currentObject) {
         this.currentObject = currentObject;
     }
+    private void cleanUpCache() {
+        System.out.println("Clean not actual");
+        synchronized (cache) {
+            cache.entrySet().removeIf(entry -> entry.getValue().notActual());
+        }
+    }
+
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+       // new Thread(()-> cleanUpCache()).start();
+        CacheKey key = new CacheKey(currentObject, method);
+        CacheEntry entry = cache.get(key);
         Object objectResult;
         Method currentMethod;
-        Thread thread;
-        Thread thread1;
         currentMethod = currentObject.getClass().getMethod(method.getName(), method.getParameterTypes());
 
         if (currentMethod.isAnnotationPresent(Cache.class)) {
-            if (results.containsKey(currentMethod)) {
-                return results.get(currentMethod);//3
+            int lTime = currentMethod.getAnnotation(Cache.class).value();
+            if (entry == null || !entry.isActual()) {
+                System.out.println("Annotation Cache New calculation ");
+                objectResult = method.invoke(currentObject, args);
+                entry = new CacheEntry(objectResult, lTime);
+                cache.put(key, entry);
+            } else {
+                System.out.println("Annotation Cache New time");
+                entry.refreshExpiration(lTime);
             }
-            objectResult = method.invoke(currentObject, args);
-            results.put(currentMethod, objectResult);//4
-
-          //  thread = new Thread(() -> results.put(currentMethod, objectResult));
-
-          // thread.run();
-           return objectResult;
+            return entry.getResult();
         }
+
         if (currentMethod.isAnnotationPresent(Mutator.class)) {
-            //results.clear(); //2
-            thread1 = new Thread(() ->results.clear());
-            thread1.run();
+            System.out.println("Annotation Mutator");
+            new Thread(()-> cleanUpCache()).start();
+
         }
         return method.invoke(currentObject, args);
     }
 
 
     private static class CacheKey {
-        String key;
+        Object key;
         Method method;
 
-        public CacheKey(String key, Method method) {
+        public CacheKey(Object key, Method method) {
             this.key = key;
             this.method = method;
         }
@@ -74,10 +87,12 @@ public class CachingHandler<T> implements InvocationHandler {
         public Object getResult() {
             return result;
         }
-        public boolean isActuat() {
+        public boolean isActual() {
+            System.out.println("expirationTime = " + this.expirationTime+"currentTimeMillis"+ System.currentTimeMillis());
             return (expirationTime == null || this.expirationTime >= System.currentTimeMillis());
         }
         public boolean notActual() {
+            System.out.println("expirationTime = " + this.expirationTime+"currentTimeMillis"+ System.currentTimeMillis());
             return !(expirationTime == null || this.expirationTime >= System.currentTimeMillis());
         }
         public void refreshExpiration(Integer Ltime) {
@@ -92,6 +107,14 @@ public class CachingHandler<T> implements InvocationHandler {
                     ", Ltime=" + Ltime +
                     ", expirationTime=" + expirationTime +
                     '}';
+        }
+    }
+    class ConsUtils{
+        public static <T> T cache(T objectIncome)  {
+            return (T) Proxy.newProxyInstance(
+                    objectIncome.getClass().getClassLoader(),
+                    objectIncome.getClass().getInterfaces(),
+                    new CachingHandler(objectIncome));
         }
     }
 }

@@ -1,57 +1,60 @@
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class CachingHandler implements InvocationHandler {
     private final Object currentObject;
-    Thread clearCacheThread;
-    private Map<CacheKey, CacheEntry> cache = new ConcurrentHashMap<>();
+    private Map<CacheKey, CacheRes> cache = new ConcurrentHashMap<>();
 
     public CachingHandler(Object currentObject) {
         this.currentObject = currentObject;
     }
     private void cleanUpCache() {
-        System.out.println("Clean not actual");
+        //System.out.println("Clean not actual");
         synchronized (cache) {
             cache.entrySet().removeIf(entry -> entry.getValue().notActual());
         }
     }
-
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-       // new Thread(()-> cleanUpCache()).start();
+        CacheRes entry = null;
+        Method currentMethod = currentObject.getClass().getMethod(method.getName(), method.getParameterTypes());
         CacheKey key = new CacheKey(currentObject, method);
-        CacheEntry entry = cache.get(key);
-        Object objectResult;
-        Method currentMethod;
-        currentMethod = currentObject.getClass().getMethod(method.getName(), method.getParameterTypes());
-
+        for (Map.Entry<CacheKey, CacheRes> ch : cache.entrySet()){
+           // System.out.println("Create new scratch file from selection = "+ch.getValue().result);
+          //  System.out.println("entry.result = " + entry.result);
+            if (ch.getKey().key.equals(currentObject) &&entry!= null && ch.getValue().result == entry.result) {
+                    entry = cache.get(ch.getKey());
+            }
+        }
+        //System.out.println("entry  = "+ entry + "  currentObject ="+ currentObject);
         if (currentMethod.isAnnotationPresent(Cache.class)) {
-            int lTime = currentMethod.getAnnotation(Cache.class).value();
+            var cacheTime = currentMethod.getAnnotation(Cache.class).value();
             if (entry == null || !entry.isActual()) {
-                System.out.println("Annotation Cache New calculation ");
-                objectResult = method.invoke(currentObject, args);
-                entry = new CacheEntry(objectResult, lTime);
-                cache.put(key, entry);
+                Object objectResult = method.invoke(currentObject, args);
+                entry = new CacheRes(objectResult, cacheTime);
+                cache.put(key.clone(), entry);
+                //System.out.println("Calculation  = "+ cache);
+                System.out.println("entryrezalt  = "+ entry.result);
             } else {
-                System.out.println("Annotation Cache New time");
-                entry.refreshExpiration(lTime);
+                entry.refreshExpiration(cacheTime);
+                System.out.println("Return cache  = "+ entry.getResult());
+
             }
             return entry.getResult();
         }
 
         if (currentMethod.isAnnotationPresent(Mutator.class)) {
-            System.out.println("Annotation Mutator");
-            new Thread(()-> cleanUpCache()).start();
+           System.out.println("Annotation Mutator");
+          //  System.out.println("entry  = "+ entry);
+         //   new Thread(()-> cleanUpCache()).start();
 
         }
+        System.out.println("Ca = "+ cache);
         return method.invoke(currentObject, args);
     }
-
-
-    private static class CacheKey {
+    private static class CacheKey implements Cloneable{
         Object key;
         Method method;
 
@@ -59,63 +62,52 @@ public class CachingHandler implements InvocationHandler {
             this.key = key;
             this.method = method;
         }
-
         @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            CacheKey cacheKey = (CacheKey) o;
-            return Objects.equals(key, cacheKey.key) && Objects.equals(method, cacheKey.method);
+        public String toString() {
+            return "CacheKey{" +
+                    "key=" + key +
+                    ", method=" + method +
+                    '}';
         }
-
         @Override
-        public int hashCode() {
-            return Objects.hash(key,method);
+        protected CacheKey clone() throws CloneNotSupportedException {
+            return (CacheKey) super.clone();
         }
     }
-    private class CacheEntry {
+    private class CacheRes {
         Object result;
-        Integer Ltime;
-        Long expirationTime;
+        Integer cacheTime;
+        Long expTime;
 
-        public CacheEntry(Object result, Integer ltime) {
+        public CacheRes(Object result, Integer cacheTime) {
             this.result = result;
-            if (Ltime != null) {
-                this.expirationTime = System.currentTimeMillis() + Ltime;
+            if (this.cacheTime != null) {
+                this.expTime = System.currentTimeMillis() + this.cacheTime;
             }
         }
-        public Object getResult() {
-            return result;
+        public Object getResult()  {
+            return result ;
         }
         public boolean isActual() {
-            System.out.println("expirationTime = " + this.expirationTime+"currentTimeMillis"+ System.currentTimeMillis());
-            return (expirationTime == null || this.expirationTime >= System.currentTimeMillis());
+            return (expTime == null || this.expTime >= System.currentTimeMillis());
         }
         public boolean notActual() {
-            System.out.println("expirationTime = " + this.expirationTime+"currentTimeMillis"+ System.currentTimeMillis());
-            return !(expirationTime == null || this.expirationTime >= System.currentTimeMillis());
+            return (expTime != null && this.expTime <= System.currentTimeMillis());
         }
-        public void refreshExpiration(Integer Ltime) {
-            if (Ltime != null) {
-                this.expirationTime = System.currentTimeMillis() + Ltime;
+        public void refreshExpiration(Integer cacheTime) {
+            if (cacheTime != null) {
+                this.expTime = System.currentTimeMillis() + cacheTime;
             }
         }
         @Override
         public String toString() {
             return "CacheEntry{" +
                     "result=" + result +
-                    ", Ltime=" + Ltime +
-                    ", expirationTime=" + expirationTime +
+                    ", cacheTime=" + cacheTime +
+                    ", expTime=" + expTime +
                     '}';
         }
-    }
-    class ConsUtils{
-        public static <T> T cache(T objectIncome)  {
-            return (T) Proxy.newProxyInstance(
-                    objectIncome.getClass().getClassLoader(),
-                    objectIncome.getClass().getInterfaces(),
-                    new CachingHandler(objectIncome));
-        }
+
     }
 }
 

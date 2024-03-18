@@ -4,6 +4,6 @@ public class Utils {
             return (T) Proxy.newProxyInstance(
                     objectIncome.getClass().getClassLoader(),
                     objectIncome.getClass().getInterfaces(),
-                    new CachingHandler<>(objectIncome));
+                    new CachingHandler(objectIncome));
         }
 }

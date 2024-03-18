@@ -5,74 +5,42 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class CachingHandler implements InvocationHandler {
     private final Object currentObject;
-    private Map<CacheKey, CacheRes> cache = new ConcurrentHashMap<>();
+    private Map<Integer, CacheRes> cache = new ConcurrentHashMap<>();
 
     public CachingHandler(Object currentObject) {
         this.currentObject = currentObject;
     }
+
     private void cleanUpCache() {
         //System.out.println("Clean not actual");
         synchronized (cache) {
             cache.entrySet().removeIf(entry -> entry.getValue().notActual());
         }
     }
+
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        CacheRes entry = null;
+        int key = currentObject.hashCode();
         Method currentMethod = currentObject.getClass().getMethod(method.getName(), method.getParameterTypes());
-        CacheKey key = new CacheKey(currentObject, method);
-        for (Map.Entry<CacheKey, CacheRes> ch : cache.entrySet()){
-           // System.out.println("Create new scratch file from selection = "+ch.getValue().result);
-          //  System.out.println("entry.result = " + entry.result);
-            if (ch.getKey().key.equals(currentObject) &&entry!= null && ch.getValue().result == entry.result) {
-                    entry = cache.get(ch.getKey());
-            }
-        }
-        //System.out.println("entry  = "+ entry + "  currentObject ="+ currentObject);
+        new Thread(()-> cleanUpCache()).start();
+        CacheRes entry = cache.get(key);
         if (currentMethod.isAnnotationPresent(Cache.class)) {
-            var cacheTime = currentMethod.getAnnotation(Cache.class).value();
-            if (entry == null || !entry.isActual()) {
-                Object objectResult = method.invoke(currentObject, args);
+           var cacheTime = currentMethod.getAnnotation(Cache.class).value();
+            if ( entry == null || !entry.isActual()) {
+                Object objectResult =  method.invoke(currentObject, args);
                 entry = new CacheRes(objectResult, cacheTime);
-                cache.put(key.clone(), entry);
-                //System.out.println("Calculation  = "+ cache);
-                System.out.println("entryrezalt  = "+ entry.result);
+                cache.put(key, entry);
             } else {
                 entry.refreshExpiration(cacheTime);
                 System.out.println("Return cache  = "+ entry.getResult());
-
             }
             return entry.getResult();
         }
 
         if (currentMethod.isAnnotationPresent(Mutator.class)) {
            System.out.println("Annotation Mutator");
-          //  System.out.println("entry  = "+ entry);
-         //   new Thread(()-> cleanUpCache()).start();
-
         }
-        System.out.println("Ca = "+ cache);
         return method.invoke(currentObject, args);
-    }
-    private static class CacheKey implements Cloneable{
-        Object key;
-        Method method;
-
-        public CacheKey(Object key, Method method) {
-            this.key = key;
-            this.method = method;
-        }
-        @Override
-        public String toString() {
-            return "CacheKey{" +
-                    "key=" + key +
-                    ", method=" + method +
-                    '}';
-        }
-        @Override
-        protected CacheKey clone() throws CloneNotSupportedException {
-            return (CacheKey) super.clone();
-        }
     }
     private class CacheRes {
         Object result;

@@ -1,3 +1,10 @@
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+interface SaveFr{
+    public void load();
+}
+
 public class Fraction implements Fractionable {
     private int num;
     private int denum;
@@ -18,24 +25,43 @@ public class Fraction implements Fractionable {
         this.denum = denum;
     }
 
-    @Override
-    public void introduce() {
-
-        System.out.println("Дробь " + this);
-    }
-
-    @Cache
+    @Cache(1000)
     public double doubleValue() {
        System.out.println("Origin double value  " +  (double) num / denum);
         return (double) num / denum;
     }
 
     @Override
+    @Cache(1000)
     public String toString() {
         return "Fraction{" +
                 "num=" + num +
                 ", denum=" + denum +
                 '}';
+    }
+
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+        return super.clone();
+
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) return true;
+        if (object == null || getClass() != object.getClass()) return false;
+
+        Fraction fraction = (Fraction) object;
+
+        if (num != fraction.num) return false;
+        return denum == fraction.denum;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = num;
+        result = 31 * result + denum;
+        return result;
     }
 }
 

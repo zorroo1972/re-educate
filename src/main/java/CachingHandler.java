@@ -5,31 +5,33 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class CachingHandler implements InvocationHandler {
     private final Object currentObject;
-    private Map<Integer, CacheRes> cache = new ConcurrentHashMap<>();
+    private Map<Method,CacheRes> resMap;
+    private Map<Integer, Map> cache = new ConcurrentHashMap<>();
 
     public CachingHandler(Object currentObject) {
         this.currentObject = currentObject;
     }
 
     private void cleanUpCache() {
-        //System.out.println("Clean not actual");
-        synchronized (cache) {
-            cache.entrySet().removeIf(entry -> entry.getValue().notActual());
+        synchronized (resMap) {
+            resMap.entrySet().removeIf(entry -> entry.getValue().notActual());
         }
     }
-
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        int key = currentObject.hashCode();
+        CacheRes entry = null;
+        Integer key = currentObject.hashCode();
         Method currentMethod = currentObject.getClass().getMethod(method.getName(), method.getParameterTypes());
-        new Thread(()-> cleanUpCache()).start();
-        CacheRes entry = cache.get(key);
+        if (key != null) resMap = cache.get(key);
+        if (resMap != null) entry = resMap.get(method);
         if (currentMethod.isAnnotationPresent(Cache.class)) {
            var cacheTime = currentMethod.getAnnotation(Cache.class).value();
             if ( entry == null || !entry.isActual()) {
                 Object objectResult =  method.invoke(currentObject, args);
                 entry = new CacheRes(objectResult, cacheTime);
-                cache.put(key, entry);
+                resMap = new ConcurrentHashMap<>();
+                resMap.put(method,entry);
+                cache.put(key, resMap);
             } else {
                 entry.refreshExpiration(cacheTime);
                 System.out.println("Return cache  = "+ entry.getResult());
@@ -39,6 +41,7 @@ public class CachingHandler implements InvocationHandler {
 
         if (currentMethod.isAnnotationPresent(Mutator.class)) {
            System.out.println("Annotation Mutator");
+            new Thread(()-> cleanUpCache()).start();
         }
         return method.invoke(currentObject, args);
     }

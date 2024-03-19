@@ -1,9 +1,3 @@
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-interface SaveFr{
-    public void load();
-}
 
 public class Fraction implements Fractionable {
     private int num;
